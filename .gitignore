@@ -1,0 +1,8 @@
+# Ignorar archivos de estado de Terraform
+*.tfstate
+*.tfstate.*
+.terraform/        
+
+# Ignorar archivos de configuración local
+terraform.tfvars   
+.env               
