@@ -21,14 +21,38 @@ variable "subnet_public2_cidr" {
 
 }
 variable "subnet_private1_cidr" {
-  description = "cidr de la subnet privada 1"
+  description = "cidr de la subnet privada 1 ec2"
   type        = string
   default     = "10.0.3.0/24"
 
 }
 variable "subnet_private2_cidr" {
-  description = "cidr de la subnet privada 2"
+  description = "cidr de la subnet privada 2 ec2"
   type        = string
   default     = "10.0.4.0/24"
+
+}
+variable "subnet_private3_cidr" {
+  description = "cidr de la subnet privada 3 rds"
+  type        = string
+  default     = "10.0.5.0/24"
+
+}
+variable "subnet_private4_cidr" {
+  description = "cidr de la subnet privada 4 rds"
+  type        = string
+  default     = "10.0.6.0/24"
+
+}
+variable "subnet_private5_cidr" {
+  description = "cidr de la subnet privada 5 elasticache"
+  type        = string
+  default     = "10.0.7.0/24"
+
+}
+variable "subnet_private6_cidr" {
+  description = "cidr de la subnet privada 6 elasticache"
+  type        = string
+  default     = "10.0.8.0/24"
 
 }
