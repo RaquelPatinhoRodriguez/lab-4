@@ -608,9 +608,9 @@ resource "aws_lb_target_group" "terrafom_target_group" {
 
 //auto scaling group
 resource "aws_autoscaling_group" "terraform_asg" {
-  min_size             =1
-  max_size             = 1
-  desired_capacity     = 1
+  min_size             =2
+  max_size             = 3
+  desired_capacity     = 2
   launch_template {
     id      = aws_launch_template.terraform_launch_template.id
     version = "$Latest"
