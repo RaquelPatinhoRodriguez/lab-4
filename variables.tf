@@ -56,3 +56,9 @@ variable "subnet_private6_cidr" {
   default     = "10.0.8.0/24"
 
 }
+variable "aws_region" {
+  description = "region actual"
+  type        = string
+  default     = "us-east-1"
+
+}

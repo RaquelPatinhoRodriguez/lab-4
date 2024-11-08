@@ -18,7 +18,7 @@ resource "aws_vpc" "terraform_vpc" {
     cidr_block = var.vpc_cidr
     instance_tenancy = "default"
     enable_dns_hostnames    = true
-   // enable_dns_support   = true # Enable DNS resolution de momento no lo tengo 
+   // enable_dns_support   = true 
   
     tags = {
         Name = "terraform-VPC"
@@ -239,7 +239,7 @@ resource "aws_iam_instance_profile" "ssm_instance_profile" {
   name = "SSMInstanceProfile"
   role = aws_iam_role.ssm_role.name
 }
-//le a
+//le añadimos el acceso a secrets manager
 resource "aws_iam_role_policy" "ssm_secrets_access_policy" {
   name = "ssm-secrets-access-policy"
   role = aws_iam_role.ssm_role.name
@@ -254,6 +254,42 @@ resource "aws_iam_role_policy" "ssm_secrets_access_policy" {
       }
     ]
   })
+}
+
+# Política de IAM para permitir acceso de lectura/escritura en el bucket de S3
+resource "aws_iam_policy" "wordpress_s3_policy" {
+  name        = "WordPressS3Policy"
+  description = "Permite a las instancias de EC2 acceder al bucket de S3 de WordPress para almacenar medios"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ],
+        Resource = ["${aws_s3_bucket.media_bucket.arn}/*"]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation",     
+          "s3:ListBucketMultipartUploads"  
+        ],
+        Resource = "${aws_s3_bucket.media_bucket.arn}"
+      }
+    ]
+  })
+}
+
+# Adjuntar la política al rol de IAM ya existente de las instancias EC2
+resource "aws_iam_role_policy_attachment" "attach_wordpress_s3_policy" {
+  role       = aws_iam_role.ssm_role.name  
+  policy_arn = aws_iam_policy.wordpress_s3_policy.arn
 }
 
 
@@ -280,7 +316,7 @@ resource "aws_security_group" "EC2_security_group" {
 }
 
 /*
-//creacion de certificado autofirmado para trafico https 
+//creacion de certificado autofirmado para trafico https . una vez creado lo dejamos comentado para que no lo genere nuevamente
 
 # Genera el certificado y la clave
 resource "null_resource" "generate_self_signed_cert" {
@@ -310,10 +346,11 @@ resource "aws_iam_server_certificate" "selfsigned_cert" {
   name_prefix     = "my-selfsigned-cert-"
   certificate_body = data.local_file.cert_file.content
   private_key      = data.local_file.key_file.content
-    lifecycle {
+  //bloque de codigo para evitar que intente borrar el certificado al hacer modificaciones, solo es necesario si no se hace un apply desde cero 
+    /*lifecycle {
     prevent_destroy = true
      ignore_changes  = all
-  }
+  }*/
 }
 
 
@@ -328,13 +365,14 @@ resource "aws_security_group" "ALB_security_group" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  ingress {
+  /* con fines de pruebas, no se utiliza en version defininta
+    ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+*/
   egress {
     from_port   = 0
     to_port     = 0
@@ -380,13 +418,6 @@ resource "aws_security_group" "elasticache_sg" {
     security_groups = [aws_security_group.EC2_security_group.id] 
   }
 
-  # Permitir acceso solo desde el grupo de seguridad de EC2 en el puerto de Memcached
-  ingress {
-    from_port       = 11211
-    to_port         = 11211
-    protocol        = "tcp"
-    security_groups = [aws_security_group.EC2_security_group.id]  
-  }
 
   egress {
     from_port   = 0
@@ -456,7 +487,7 @@ resource "aws_cloudfront_distribution" "cloudfront_lab_4" {
 
   enabled             = true
   comment             = "CloudFront distribution for WordPress site with ALB for lab 4"
-  default_root_object = "index.html"
+  default_root_object = "index.php"
 
   restrictions {
     geo_restriction {
@@ -478,7 +509,7 @@ resource "aws_cloudfront_distribution" "cloudfront_lab_4" {
 
 //Bucket S3 para las imagenes de wordpress
 resource "aws_s3_bucket" "media_bucket" {
-  bucket = "raquel-patinho-wordpress-media"   # Cambia esto a un nombre único a nivel global
+  bucket = "raquel-patinho-wordpress-media"  
 
   tags = {
     Name        = "WordPress Media Bucket"
@@ -489,18 +520,18 @@ resource "aws_s3_bucket" "media_bucket" {
 // Configurar el bloqueo de acceso público
 resource "aws_s3_bucket_public_access_block" "media_bucket_block" {
   bucket                  = aws_s3_bucket.media_bucket.id
-  block_public_acls       = true
-  ignore_public_acls      = true
-  block_public_policy     = true
-  restrict_public_buckets = true
+  block_public_acls       = false
+  ignore_public_acls      = false
+  block_public_policy     = false
+  restrict_public_buckets = false
 }
 
-// Crear una identidad de acceso de origen para CloudFront
+/* Crear una identidad de acceso de origen para CloudFront
 resource "aws_cloudfront_origin_access_identity" "oai" {
   comment = "Access for S3 from CloudFront"
-}
+}*/
 
-// Política del bucket para permitir que CloudFront o EC2 acceda al bucket
+// Política del bucket 
 resource "aws_s3_bucket_policy" "media_bucket_policy" {
   bucket = aws_s3_bucket.media_bucket.id
 
@@ -509,13 +540,15 @@ resource "aws_s3_bucket_policy" "media_bucket_policy" {
     Statement = [
       {
         Effect = "Allow",
-        Principal = {
+        Principal = "*",
+        /*{
+          
           AWS = aws_cloudfront_origin_access_identity.oai.iam_arn  # Identidad de acceso de CloudFront
-        },
+        }*/
         Action   = "s3:GetObject",
         Resource = [
-          "${aws_s3_bucket.media_bucket.arn}",      # Permiso para la raíz del bucket
-          "${aws_s3_bucket.media_bucket.arn}/*"     # Permiso para todos los objetos dentro del bucket
+          "${aws_s3_bucket.media_bucket.arn}",      
+          "${aws_s3_bucket.media_bucket.arn}/*"     
         ]
       }
     ]
@@ -530,7 +563,7 @@ resource "aws_lb" "terraform_alb" {
   subnets            = [aws_subnet.subnet-public1.id,aws_subnet.subnet-public2.id]
 }
 
-//listener para el load balancer en el puerto 80
+/*//listener para el load balancer en el puerto 80 para pruebas, no se utiliza en la version definitiva
 resource "aws_lb_listener" "alb_listener_http" {
   load_balancer_arn = aws_lb.terraform_alb.arn
   port              = "80"
@@ -540,7 +573,7 @@ resource "aws_lb_listener" "alb_listener_http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.terrafom_target_group.arn
   }
-}
+}*/
 
 // Listener HTTPS en el ALB usando el certificado de IAM
 resource "aws_lb_listener" "alb_listener_https" {
@@ -584,13 +617,18 @@ resource "aws_autoscaling_group" "terraform_asg" {
   }
   vpc_zone_identifier  =[aws_subnet.subnet-private1.id,aws_subnet.subnet-private2.id]
   target_group_arns    = [aws_lb_target_group.terrafom_target_group.arn]
+  # Asegura que el ASG espere a que el secreto y la base de datos estén creados
+  depends_on = [
+    aws_secretsmanager_secret.db_secret_pass,
+    aws_db_instance.postgres
+  ]
 }
 
 //launch template
 resource "aws_launch_template" "terraform_launch_template" {
   name_prefix   = "terraform-launch-template-"
   description   = "Launch template para instancias en subred privada"
-  image_id      = "ami-06b21ccaeff8cd686" 
+  image_id      = "ami-01d333616dd809baa"
   instance_type = "t2.micro"
 
   network_interfaces {
@@ -609,21 +647,14 @@ resource "aws_launch_template" "terraform_launch_template" {
       Name = "asg-instance"
     }
   }
-    user_data =base64encode( <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y httpd
-              systemctl start httpd
-              systemctl enable httpd
-              # En el script user_data
-              mkdir -p /var/www/html/health
-              echo "OK" > /var/www/html/health/healthcheck.html
+  # Asegura que el Launch Template espere al secreto y la base de datos
+  depends_on = [
+    aws_secretsmanager_secret.db_secret_pass,
+    aws_db_instance.postgres
+  ]
 
-              echo "<html><body><h1>Hola Mundo desde Apache en AWS!</h1></body></html>" > /var/www/html/index.html
-              EOF
-              )
+    user_data = base64encode(file("user_data.sh"))
 }
-
 
 //  EFS
 resource "aws_efs_file_system" "terrafom_efs" {
@@ -644,11 +675,7 @@ resource "aws_efs_mount_target" "example_efs_mount_target_private2" {
   security_groups = [aws_security_group.EFS_security_group.id]
 }
 
-//Creamos una contraseña aleatoria para usar en la base de datos 
-resource "random_password" "db_password" {
-  length  = 8
-  special = true  # Incluir caracteres especiales
-}
+
 
 //Subnet group para la base de datos 
 resource "aws_db_subnet_group" "db_subnet_group" {
@@ -669,7 +696,7 @@ resource "aws_db_instance" "postgres" {
   allocated_storage       = 20
   db_name                 = "drupaldb"
   username                = "drupaladmin"
-  password                = random_password.db_password.result
+  password = ":jncrqs!"
   db_subnet_group_name    = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids  = [aws_security_group.rds_sg.id]
   backup_retention_period = 7
@@ -696,7 +723,8 @@ resource "aws_secretsmanager_secret_version" "db_secret_version" {
   secret_id = aws_secretsmanager_secret.db_secret_pass.id
   secret_string = jsonencode({
     username = "drupaladmin"
-    password = random_password.db_password.result  # Misma contraseña que en el módulo RDS
+    //password = random_password.db_password.result  # Misma contraseña que en el módulo RDS
+    password = ":jncrqs!"
     host     = aws_db_instance.postgres.address
     port     = aws_db_instance.postgres.port
     dbname   = aws_db_instance.postgres.db_name
@@ -721,21 +749,7 @@ resource "aws_elasticache_cluster" "redis_cluster" {
   }
 }
 
-//ElastiCache Memcached
-resource "aws_elasticache_cluster" "memcached_cluster" {
-  cluster_id           = "memcached-cluster"
-  engine               = "memcached"
-  node_type            = "cache.t3.micro"  # Cambia el tipo de nodo según tus necesidades
-  num_cache_nodes      = 1                # Número de nodos en el clúster de Memcached
-  port                 = 11211
 
-  subnet_group_name = aws_elasticache_subnet_group.elasticache_subnet_group.name
-  security_group_ids = [aws_security_group.elasticache_sg.id]
-
-  tags = {
-    Name = "memcached-cluster"
-  }
-}
 
 // Subnet Group para ElastiCache
 resource "aws_elasticache_subnet_group" "elasticache_subnet_group" {
@@ -787,14 +801,6 @@ resource "aws_route53_record" "redis_record" {
 
 }
 
-//Registro para Memcached
-resource "aws_route53_record" "memcached_record" {
-  zone_id = aws_route53_zone.internal_zone.zone_id
-  name    = "memcached.internal.lab4.com"  # Subdominio para Memcached
-  type    = "CNAME"
-  ttl     = 30
-  records = [aws_elasticache_cluster.memcached_cluster.cache_nodes[0].address]  # Dirección del nodo Memcached
-}
 
 //Registro para la base de datos RDS 
 resource "aws_route53_record" "rds_record" {
@@ -806,17 +812,62 @@ resource "aws_route53_record" "rds_record" {
 
 }
 
+//Dashboard para cloudwatch
+resource "aws_cloudwatch_dashboard" "dashboard" {
+  dashboard_name = "cloudwatch-dashboard"
 
-/****************************
-resource "aws_instance" "private_ec2_pruebas" {
-  ami           = "ami-06b21ccaeff8cd686" 
-  instance_type = "t2.micro"
-  subnet_id     = aws_subnet.subnet-private1.id
-  iam_instance_profile = aws_iam_instance_profile.ssm_instance_profile.name
-
-  tags = {
-    Name = "PrivateInstance1"
-  }
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        "type": "metric",
+        "x": 0,
+        "y": 0,
+        "width": 6,
+        "height": 6,
+        "properties": {
+          "metrics": [
+            [ "AWS/EC2", "CPUUtilization", "InstanceId", "mi-instance-id" ]
+          ],
+          "title": "CPU Utilization",
+          "stat": "Average",
+          "period": 300,
+          "region": "us-west-2"
+        }
+      },
+      {
+        "type": "metric",
+        "x": 6,
+        "y": 0,
+        "width": 6,
+        "height": 6,
+        "properties": {
+          "metrics": [
+            [ "AWS/EC2", "StatusCheckFailed", "InstanceId", "mi-instance-id" ]
+          ],
+          "title": "Instance Status",
+          "stat": "Sum",
+          "period": 300,
+          "region": "us-west-2"
+        }
+      },
+      {
+        "type": "metric",
+        "x": 0,
+        "y": 6,
+        "width": 12,
+        "height": 6,
+        "properties": {
+          "metrics": [
+            [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "mi-load-balancer" ]
+          ],
+          "title": "Latency",
+          "stat": "Average",
+          "period": 60,
+          "region": "us-west-2"
+        }
+      }
+    ]
+  })
 }
 
-*/
+
