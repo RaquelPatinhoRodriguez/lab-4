@@ -365,14 +365,14 @@ resource "aws_security_group" "ALB_security_group" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  /* con fines de pruebas, no se utiliza en version defininta
+   //acceso en el puerto 80 para el funcionamiento de cloudfront, ya que con este certificado ssl cloudfront no conecta por https
     ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-*/
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -563,7 +563,7 @@ resource "aws_lb" "terraform_alb" {
   subnets            = [aws_subnet.subnet-public1.id,aws_subnet.subnet-public2.id]
 }
 
-/*//listener para el load balancer en el puerto 80 para pruebas, no se utiliza en la version definitiva
+//listener para el load balancer en el puerto 80 para el funcionamiento de cloudfront, ya que con este certificado ssl cloudfront no conecta por https
 resource "aws_lb_listener" "alb_listener_http" {
   load_balancer_arn = aws_lb.terraform_alb.arn
   port              = "80"
@@ -573,7 +573,7 @@ resource "aws_lb_listener" "alb_listener_http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.terrafom_target_group.arn
   }
-}*/
+}
 
 // Listener HTTPS en el ALB usando el certificado de IAM
 resource "aws_lb_listener" "alb_listener_https" {
@@ -696,6 +696,7 @@ resource "aws_db_instance" "postgres" {
   allocated_storage       = 20
   db_name                 = "drupaldb"
   username                = "drupaladmin"
+
   password = ":jncrqs!"
   db_subnet_group_name    = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids  = [aws_security_group.rds_sg.id]
